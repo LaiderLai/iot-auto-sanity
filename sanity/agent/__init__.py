@@ -11,6 +11,15 @@ from sanity.agent.err import FAILED
 from sanity.launcher.parser import LauncherParser
 
 
+def mail_fail(project, msg):
+    """send failed message through the mail"""
+    print(f"FAILED\n{msg}")
+    Mail.send_mail(
+        FAILED,
+        f"{project}\n{msg}",
+    )
+
+
 def start_agent(cfg):
     """sanity main agent"""
 
@@ -30,6 +39,12 @@ def start_agent(cfg):
     DevData.netif = cfg_data.get("network")
     if cfg_data.get("hostname"):
         DevData.hostname = cfg_data.get("hostname")
+    if cfg_data.get("ssh"):
+        DevData.ssh.sship = cfg_data["ssh"]["ip"]
+        DevData.ssh.sshport = cfg_data["ssh"]["port"]
+    if cfg_data.get("pdu"):
+        DevData.pdu.pduip = cfg_data["pdu"]["ip"]
+        DevData.pdu.pduport = cfg_data["pdu"]["port"]
 
     # Controller
     con = None
@@ -49,15 +64,25 @@ def start_agent(cfg):
     if cfg_data.get("recipients"):
         Mail.recipients.extend(cfg_data.get("recipients"))
 
-    try:
-        agent.start(launcher_data.get("run_stage"), con, sched)
-    except serial.SerialException as e:
-        print(
-            "device disconnected or multiple access on port?"
-            f" error code {e}"
-        )
-        Mail.send_mail(
-            FAILED,
-            f"{DevData.project} device disconnected "
-            "or multiple access on port?",
-        )
+    if cfg_data.get("ssh"):
+        try:
+            agent.ssh(launcher_data.get("run_stage"), DevData)
+        except (
+            FileNotFoundError,
+            TimeoutError,
+            ValueError,
+            IOError,
+            EnvironmentError,
+        ) as e:
+            mail_fail(DevData.project, e)
+        else:
+            print(f"The {DevData.project} auto-sanity testing is finished!!!")
+    else:
+        try:
+            agent.start(launcher_data.get("run_stage"), con, sched)
+        except serial.SerialException as e:
+            msg = (
+                "device disconnected or multiple access on port?"
+                f" error code {e}"
+            )
+            mail_fail(DevData.project, msg)
